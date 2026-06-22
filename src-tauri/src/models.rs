@@ -50,6 +50,17 @@ pub struct CaddyStatus {
     pub binary: Option<String>,
 }
 
+/// Trang thai cua background service (launchd / Windows service).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ServiceStatus {
+    /// OS hien tai co ho tro chay Caddy nhu service khong.
+    pub supported: bool,
+    /// Service da duoc cai (plist ton tai) chua.
+    pub installed: bool,
+    /// Caddy co dang chay (qua admin API) khong.
+    pub running: bool,
+}
+
 /// Trang thai git de hien thi tren UI.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GitStatus {

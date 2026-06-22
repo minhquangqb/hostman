@@ -3,8 +3,14 @@ mod config;
 mod git_sync;
 mod hosts_file;
 mod models;
+mod service;
 
-use models::{CaddyStatus, Config, GitStatus, Host};
+use models::{CaddyStatus, Config, GitStatus, Host, ServiceStatus};
+use tauri::{
+    menu::{Menu, MenuItem, PredefinedMenuItem},
+    tray::TrayIconBuilder,
+    Manager,
+};
 
 // ---------- Config / Host CRUD ----------
 
@@ -117,6 +123,31 @@ fn caddy_reload() -> Result<(), String> {
     caddy::reload(&cfg)
 }
 
+/// Cai local CA cua Caddy vao trust store he thong (cho HTTPS tin cay).
+#[tauri::command]
+fn caddy_trust() -> Result<(), String> {
+    caddy::trust()
+}
+
+// ---------- Background service (launchd) ----------
+
+#[tauri::command]
+fn service_status() -> ServiceStatus {
+    service::status()
+}
+
+#[tauri::command]
+fn service_install() -> Result<ServiceStatus, String> {
+    service::install()?;
+    Ok(service::status())
+}
+
+#[tauri::command]
+fn service_uninstall() -> Result<ServiceStatus, String> {
+    service::uninstall()?;
+    Ok(service::status())
+}
+
 // ---------- Git sync ----------
 
 #[tauri::command]
@@ -152,10 +183,65 @@ fn git_push() -> Result<String, String> {
     git_sync::push()
 }
 
+/// Hien va focus cua so chinh.
+fn show_main(app: &tauri::AppHandle) {
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.show();
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+    }
+}
+
+/// Tao system tray icon voi menu Show / Quit.
+fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    let show_i = MenuItem::with_id(app, "show", "Mở Hostman", true, None::<&str>)?;
+    let sep = PredefinedMenuItem::separator(app)?;
+    let quit_i = MenuItem::with_id(app, "quit", "Thoát", true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&show_i, &sep, &quit_i])?;
+
+    let mut builder = TrayIconBuilder::with_id("main")
+        .tooltip("Hostman")
+        .menu(&menu)
+        .show_menu_on_left_click(false)
+        .on_menu_event(|app, event| match event.id.as_ref() {
+            "show" => show_main(app),
+            "quit" => app.exit(0),
+            _ => {}
+        })
+        .on_tray_icon_event(|tray, event| {
+            use tauri::tray::{MouseButton, MouseButtonState, TrayIconEvent};
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
+                show_main(tray.app_handle());
+            }
+        });
+
+    if let Some(icon) = app.default_window_icon().cloned() {
+        builder = builder.icon(icon);
+    }
+    builder.build(app)?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .setup(|app| {
+            setup_tray(app)?;
+            Ok(())
+        })
+        .on_window_event(|window, event| {
+            // Dong cua so -> an xuong tray thay vi thoat (app van chay nen).
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                let _ = window.hide();
+                api.prevent_close();
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             get_config,
             default_tld,
@@ -171,6 +257,10 @@ pub fn run() {
             caddy_start,
             caddy_stop,
             caddy_reload,
+            caddy_trust,
+            service_status,
+            service_install,
+            service_uninstall,
             git_status,
             git_init,
             git_set_remote,

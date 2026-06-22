@@ -19,6 +19,12 @@ export interface CaddyStatus {
   binary: string | null;
 }
 
+export interface ServiceStatus {
+  supported: boolean;
+  installed: boolean;
+  running: boolean;
+}
+
 export interface GitStatus {
   is_repo: boolean;
   dirty: boolean;

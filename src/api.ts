@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { CaddyStatus, Config, GitStatus, Host } from "./types";
+import type { CaddyStatus, Config, GitStatus, Host, ServiceStatus } from "./types";
 
 // Config / Host CRUD
 export const getConfig = () => invoke<Config>("get_config");
@@ -20,6 +20,12 @@ export const caddyStatus = () => invoke<CaddyStatus>("caddy_status");
 export const caddyStart = () => invoke<void>("caddy_start");
 export const caddyStop = () => invoke<void>("caddy_stop");
 export const caddyReload = () => invoke<void>("caddy_reload");
+export const caddyTrust = () => invoke<void>("caddy_trust");
+
+// Background service (launchd)
+export const serviceStatus = () => invoke<ServiceStatus>("service_status");
+export const serviceInstall = () => invoke<ServiceStatus>("service_install");
+export const serviceUninstall = () => invoke<ServiceStatus>("service_uninstall");
 
 // Git
 export const gitStatus = () => invoke<GitStatus>("git_status");

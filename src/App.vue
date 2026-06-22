@@ -2,12 +2,20 @@
 import { onMounted, ref } from "vue";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import * as api from "./api";
-import { emptyHost, type CaddyStatus, type Config, type GitStatus, type Host } from "./types";
+import {
+  emptyHost,
+  type CaddyStatus,
+  type Config,
+  type GitStatus,
+  type Host,
+  type ServiceStatus,
+} from "./types";
 import HostModal from "./components/HostModal.vue";
 import PreviewModal from "./components/PreviewModal.vue";
 
 const config = ref<Config>({ defaultTld: "test", hosts: [] });
 const caddy = ref<CaddyStatus>({ running: false, binary: null });
+const service = ref<ServiceStatus>({ supported: false, installed: false, running: false });
 const git = ref<GitStatus>({ is_repo: false, dirty: false, ahead: 0, behind: 0, remote: null });
 
 const editing = ref<Host | null>(null);
@@ -36,6 +44,7 @@ async function run<T>(fn: () => Promise<T>, okMsg?: string): Promise<T | undefin
 async function refresh() {
   config.value = (await run(api.getConfig)) ?? config.value;
   caddy.value = (await run(api.caddyStatus)) ?? caddy.value;
+  service.value = (await run(api.serviceStatus)) ?? service.value;
   git.value = (await run(api.gitStatus)) ?? git.value;
 }
 
@@ -83,6 +92,21 @@ async function caddyStart() {
 }
 async function caddyStop() {
   await run(api.caddyStop, "Caddy đã dừng");
+  caddy.value = (await run(api.caddyStatus)) ?? caddy.value;
+}
+async function caddyTrust() {
+  await run(api.caddyTrust, "Đã cài CA — HTTPS local giờ được tin cậy");
+}
+
+// ---- Service (launchd) ----
+async function serviceInstall() {
+  const s = await run(api.serviceInstall, "Đã cài Caddy làm service (tự khởi động)");
+  if (s) service.value = s;
+  caddy.value = (await run(api.caddyStatus)) ?? caddy.value;
+}
+async function serviceUninstall() {
+  const s = await run(api.serviceUninstall, "Đã gỡ service");
+  if (s) service.value = s;
   caddy.value = (await run(api.caddyStatus)) ?? caddy.value;
 }
 
@@ -136,6 +160,7 @@ async function openLink(h: Host) {
         <span>Caddy: {{ caddy.running ? "đang chạy" : "đã dừng" }}</span>
         <button v-if="!caddy.running" class="ghost sm" :disabled="busy" @click="caddyStart">Start</button>
         <button v-else class="ghost sm" :disabled="busy" @click="caddyStop">Stop</button>
+        <button class="ghost sm" :disabled="busy" title="Cài CA của Caddy vào trust store hệ thống (chạy 1 lần)" @click="caddyTrust">Trust HTTPS</button>
       </div>
     </header>
 
@@ -167,6 +192,26 @@ async function openLink(h: Host) {
           <button class="ghost sm" @click="openEdit(h)">Sửa</button>
           <button class="danger sm" @click="onDelete(h)">Xoá</button>
         </div>
+      </div>
+    </section>
+
+    <section class="git">
+      <div class="git-head">
+        <h3>Chạy nền (Service)</h3>
+        <span class="git-meta">
+          <span v-if="service.installed" class="badge ok">đã cài</span>
+          <span v-else class="badge warn">chưa cài</span>
+        </span>
+      </div>
+      <div v-if="!service.supported" class="git-actions">
+        <span class="muted">Hệ điều hành này chưa hỗ trợ chạy Caddy như service.</span>
+      </div>
+      <div v-else class="git-actions">
+        <span class="muted">
+          Cài Caddy làm dịch vụ nền (launchd) để tự khởi động cùng máy và không phải cấp quyền admin mỗi lần.
+        </span>
+        <button v-if="!service.installed" class="ghost sm" :disabled="busy" @click="serviceInstall">Cài service</button>
+        <button v-else class="danger sm" :disabled="busy" @click="serviceUninstall">Gỡ service</button>
       </div>
     </section>
 

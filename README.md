@@ -114,7 +114,9 @@ To sync across machines: in the app, **Init repo → Set remote → Push**. On a
 
 - **Ports 80/443** require elevation on macOS/Linux (binding ports below 1024 needs root). Hostman prompts for administrator access when starting the proxy.
 - **`.local` is reserved by mDNS on macOS** and can be slow or unreliable — prefer `.test`. Hostman lets you set any domain per host.
-- **HTTPS trust** — run `caddy trust` once to install the local CA into the system trust store (UI button planned).
+- **HTTPS trust** — click **Trust HTTPS** in the header once to install the local CA into the system trust store.
+- **Background service (macOS)** — under **Chạy nền (Service)**, install Caddy as a `launchd` LaunchDaemon (`/Library/LaunchDaemons/com.hostman.caddy.plist`). It runs as root, auto-starts with the machine, and binds 80/443 without re-prompting for admin each time. Use **Gỡ service** to remove it. When the service is installed, prefer reloading config over the manual Start/Stop buttons.
+- **Tray icon** — closing the window hides Hostman to the system tray; the app keeps running. Reopen from the tray icon or quit via the tray menu.
 
 ## Releasing
 
@@ -129,9 +131,9 @@ The workflow builds installers for macOS (Apple Silicon + Intel) and Windows in 
 
 ## Roadmap
 
-- [ ] `caddy trust` button for one-click HTTPS trust
-- [ ] Run Caddy as a background service (launchd / Windows service) to avoid repeated elevation and enable auto-start
-- [ ] System tray icon
+- [x] `caddy trust` button for one-click HTTPS trust
+- [x] Run Caddy as a background service (launchd) to avoid repeated elevation and enable auto-start — *macOS; Windows service planned*
+- [x] System tray icon (closing the window hides to tray; quit from the tray menu)
 - [ ] Per-host custom TLD presets
 
 ## License

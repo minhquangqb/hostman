@@ -200,3 +200,53 @@ pub fn apply(cfg: &Config) -> Result<(), String> {
         start(cfg)
     }
 }
+
+/// Cai local CA cua Caddy vao system trust store (`caddy trust`).
+/// Chi can chay 1 lan; can quyen admin de ghi vao trust store he thong.
+pub fn trust() -> Result<(), String> {
+    let bin = find_caddy().ok_or_else(|| {
+        "Khong tim thay caddy binary. Cai caddy hoac dat sidecar canh app.".to_string()
+    })?;
+
+    #[cfg(target_os = "macos")]
+    {
+        let script = format!(
+            "do shell script \"'{}' trust\" with administrator privileges",
+            bin.display()
+        );
+        let status = Command::new("osascript")
+            .arg("-e")
+            .arg(&script)
+            .status()
+            .map_err(|e| format!("Chay osascript loi: {e}"))?;
+        if !status.success() {
+            return Err("caddy trust that bai (cap quyen admin bi tu choi?)".into());
+        }
+        return Ok(());
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let status = Command::new("pkexec")
+            .arg(bin.as_os_str())
+            .arg("trust")
+            .status()
+            .map_err(|e| format!("Chay pkexec loi: {e}"))?;
+        if !status.success() {
+            return Err("caddy trust that bai (cap quyen admin bi tu choi?)".into());
+        }
+        return Ok(());
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let status = Command::new(&bin)
+            .arg("trust")
+            .status()
+            .map_err(|e| format!("caddy trust loi: {e}"))?;
+        if !status.success() {
+            return Err("caddy trust that bai".into());
+        }
+        Ok(())
+    }
+}
