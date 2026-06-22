@@ -2,6 +2,11 @@
 //!
 //! macOS: LaunchDaemon tai `/Library/LaunchDaemons/com.hostman.caddy.plist`
 //! (chay duoi quyen root nen bind duoc 80/443 va tu khoi dong khi may bat).
+//!
+//! Windows: Scheduled Task "Hostman Caddy" chay duoi tai khoan SYSTEM
+//! (RunLevel = HighestAvailable) voi trigger luc khoi dong may (BootTrigger).
+//! Chay elevated nen bind duoc 80/443 va tu khoi dong cung Windows.
+//!
 //! Cac OS khac: chua ho tro (tra ve loi ro rang).
 
 use crate::caddy;
@@ -10,6 +15,9 @@ use crate::models::ServiceStatus;
 
 #[cfg(target_os = "macos")]
 const LABEL: &str = "com.hostman.caddy";
+
+#[cfg(target_os = "windows")]
+const TASK_NAME: &str = "Hostman Caddy";
 
 #[cfg(target_os = "macos")]
 fn plist_system_path() -> std::path::PathBuf {
@@ -26,7 +34,15 @@ pub fn status() -> ServiceStatus {
             running: caddy::is_running(),
         }
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
+    {
+        ServiceStatus {
+            supported: true,
+            installed: task_exists(),
+            running: caddy::is_running(),
+        }
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         ServiceStatus {
             supported: false,
@@ -36,8 +52,8 @@ pub fn status() -> ServiceStatus {
     }
 }
 
-/// Cai service: ghi Caddyfile, sinh plist, copy vao LaunchDaemons va bootstrap.
-/// Chi xin quyen admin 1 lan (gop moi thao tac vao 1 shell script).
+/// Cai service: ghi Caddyfile, sinh dinh nghia service, dang ky va khoi dong.
+/// Chi xin quyen admin 1 lan.
 pub fn install() -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
@@ -75,26 +91,68 @@ pub fn install() -> Result<(), String> {
         run_admin_shell(&shell)?;
         Ok(())
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
     {
-        Err("Chay Caddy nhu service hien chi ho tro tren macOS.".into())
+        let cfg = config::load_config()?;
+        let caddyfile = caddy::write_caddyfile(&cfg)?;
+        let bin = caddy::find_caddy().ok_or_else(|| {
+            "Khong tim thay caddy binary. Cai caddy hoac dat sidecar canh app.".to_string()
+        })?;
+        let workdir = config::config_dir()?;
+
+        // Sinh dinh nghia task duoi dang XML (tranh viec escape nested-quote khi
+        // path co dau cach nhu "C:\Program Files\...").
+        let xml = render_task_xml(
+            &bin.display().to_string(),
+            &caddyfile.display().to_string(),
+            &workdir.display().to_string(),
+        );
+        let xml_path = config::base_dir()?.join("hostman-caddy-task.xml");
+        write_utf16le_bom(&xml_path, &xml)
+            .map_err(|e| format!("Ghi file XML task loi: {e}"))?;
+
+        // Tao (ghi de) task tu XML roi chay ngay. Gop vao 1 lan elevation.
+        let bat = format!(
+            "@echo off\r\n\
+             schtasks /Create /TN \"{TASK_NAME}\" /XML \"{xml}\" /F\r\n\
+             if errorlevel 1 exit /b 1\r\n\
+             schtasks /Run /TN \"{TASK_NAME}\"\r\n\
+             exit /b 0\r\n",
+            xml = xml_path.display()
+        );
+        run_admin_bat("hostman-service-install.bat", &bat)?;
+        Ok(())
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        Err("Chay Caddy nhu service hien chi ho tro tren macOS va Windows.".into())
     }
 }
 
-/// Go service: bootout va xoa plist khoi LaunchDaemons.
+/// Go service: dung va xoa dang ky.
 pub fn uninstall() -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         let dst = plist_system_path().display().to_string();
-        let shell = format!(
-            "launchctl bootout system/{LABEL} 2>/dev/null; rm -f '{dst}'"
-        );
+        let shell = format!("launchctl bootout system/{LABEL} 2>/dev/null; rm -f '{dst}'");
         run_admin_shell(&shell)?;
         Ok(())
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
     {
-        Err("Chay Caddy nhu service hien chi ho tro tren macOS.".into())
+        // /End dung instance dang chay (kill caddy), roi /Delete xoa task.
+        let bat = format!(
+            "@echo off\r\n\
+             schtasks /End /TN \"{TASK_NAME}\" >nul 2>&1\r\n\
+             schtasks /Delete /TN \"{TASK_NAME}\" /F\r\n\
+             exit /b 0\r\n"
+        );
+        run_admin_bat("hostman-service-uninstall.bat", &bat)?;
+        Ok(())
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        Err("Chay Caddy nhu service hien chi ho tro tren macOS va Windows.".into())
     }
 }
 
@@ -142,6 +200,126 @@ fn run_admin_shell(cmd: &str) -> Result<(), String> {
         .map_err(|e| format!("Chay osascript loi: {e}"))?;
     if !status.success() {
         return Err("Thao tac admin that bai (cap quyen bi tu choi?)".into());
+    }
+    Ok(())
+}
+
+// ---------- Windows helpers ----------
+
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+/// Task da duoc dang ky chua (khong can quyen admin de query).
+#[cfg(target_os = "windows")]
+fn task_exists() -> bool {
+    use std::os::windows::process::CommandExt;
+    use std::process::Command;
+    Command::new("schtasks")
+        .args(["/Query", "/TN", TASK_NAME])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+/// Sinh XML dinh nghia Scheduled Task chay caddy duoi SYSTEM luc khoi dong may.
+///
+/// - `S-1-5-18`: SID cua tai khoan SYSTEM (dung SID de khoi le thuoc ngon ngu OS).
+/// - `RunLevel = HighestAvailable`: chay elevated (bind 80/443).
+/// - `ExecutionTimeLimit = PT0S`: khong gioi han thoi gian (caddy chay mai).
+#[cfg(target_os = "windows")]
+fn render_task_xml(bin: &str, caddyfile: &str, workdir: &str) -> String {
+    let bin = xml_escape(bin);
+    let caddyfile = xml_escape(caddyfile);
+    let workdir = xml_escape(workdir);
+    format!(
+        r#"<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>Hostman - chay Caddy reverse proxy khi khoi dong may</Description>
+  </RegistrationInfo>
+  <Triggers>
+    <BootTrigger>
+      <Enabled>true</Enabled>
+    </BootTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <UserId>S-1-5-18</UserId>
+      <RunLevel>HighestAvailable</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <AllowHardTerminate>true</AllowHardTerminate>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <Enabled>true</Enabled>
+    <Hidden>false</Hidden>
+    <RestartOnFailure>
+      <Interval>PT1M</Interval>
+      <Count>3</Count>
+    </RestartOnFailure>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>{bin}</Command>
+      <Arguments>run --config "{caddyfile}"</Arguments>
+      <WorkingDirectory>{workdir}</WorkingDirectory>
+    </Exec>
+  </Actions>
+</Task>
+"#
+    )
+}
+
+#[cfg(target_os = "windows")]
+fn xml_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
+/// Ghi file UTF-16LE co BOM — `schtasks /XML` mong file UTF-16.
+#[cfg(target_os = "windows")]
+fn write_utf16le_bom(path: &std::path::Path, text: &str) -> std::io::Result<()> {
+    let mut bytes = vec![0xFF, 0xFE]; // BOM UTF-16LE
+    for unit in text.encode_utf16() {
+        bytes.extend_from_slice(&unit.to_le_bytes());
+    }
+    std::fs::write(path, bytes)
+}
+
+/// Ghi `script` ra 1 file .bat tam roi chay voi quyen admin qua UAC.
+/// Dung PowerShell `Start-Process -Verb RunAs -Wait` de bat dialog UAC 1 lan
+/// va doi ket qua; exit code cua .bat quyet dinh thanh/bai.
+#[cfg(target_os = "windows")]
+fn run_admin_bat(file_name: &str, script: &str) -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
+    use std::process::Command;
+
+    let bat_path = config::base_dir()?.join(file_name);
+    std::fs::write(&bat_path, script).map_err(|e| format!("Ghi file .bat loi: {e}"))?;
+
+    // Chuoi single-quote cua PowerShell: escape ' thanh ''.
+    let p = bat_path.display().to_string().replace('\'', "''");
+    let ps = format!(
+        "$ErrorActionPreference='Stop'; \
+         $proc = Start-Process -FilePath '{p}' -Verb RunAs -Wait -PassThru -WindowStyle Hidden; \
+         exit $proc.ExitCode"
+    );
+
+    let status = Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &ps])
+        .creation_flags(CREATE_NO_WINDOW)
+        .status()
+        .map_err(|e| format!("Chay PowerShell loi: {e}"))?;
+    if !status.success() {
+        return Err("Thao tac admin that bai (UAC bi tu choi?)".into());
     }
     Ok(())
 }
