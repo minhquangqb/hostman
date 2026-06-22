@@ -14,6 +14,21 @@ Hostman is a cross-platform (macOS & Windows) desktop tool that turns `https://m
 - **Open in browser** — launch any host directly from the app.
 - **Cross-platform** — macOS and Windows.
 
+## Download
+
+Grab the latest installer from the [Releases](https://github.com/minhquangqb/hostman/releases) page:
+
+| OS | File |
+|---|---|
+| macOS (Apple Silicon) | `Hostman_*_aarch64.dmg` |
+| macOS (Intel) | `Hostman_*_x64.dmg` |
+| Windows | `Hostman_*_x64-setup.exe` / `.msi` |
+
+> Builds are currently **unsigned**. On first launch:
+> - **macOS** — *System Settings → Privacy & Security → Open Anyway*, or run
+>   `xattr -dr com.apple.quarantine /Applications/Hostman.app`.
+> - **Windows** — SmartScreen → *More info → Run anyway*.
+
 ## How it works
 
 ```
@@ -100,6 +115,17 @@ To sync across machines: in the app, **Init repo → Set remote → Push**. On a
 - **Ports 80/443** require elevation on macOS/Linux (binding ports below 1024 needs root). Hostman prompts for administrator access when starting the proxy.
 - **`.local` is reserved by mDNS on macOS** and can be slow or unreliable — prefer `.test`. Hostman lets you set any domain per host.
 - **HTTPS trust** — run `caddy trust` once to install the local CA into the system trust store (UI button planned).
+
+## Releasing
+
+Releases are built automatically by GitHub Actions ([`.github/workflows/release.yml`](.github/workflows/release.yml)). To cut a release, push a version tag:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The workflow builds installers for macOS (Apple Silicon + Intel) and Windows in parallel, then publishes a **draft** GitHub Release with the artifacts attached. Review the draft and click *Publish* when ready.
 
 ## Roadmap
 
