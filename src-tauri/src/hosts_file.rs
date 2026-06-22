@@ -67,7 +67,16 @@ pub fn render_hosts(cfg: &Config) -> Result<String, String> {
 
 /// Ghi hosts file voi quyen admin (gom 1 lan xin quyen).
 pub fn write_hosts_elevated(content: &str) -> Result<(), String> {
-    let tmp = std::env::temp_dir().join("hostman_hosts.tmp");
+    // Temp file dat ten duy nhat (pid + nanos) de tranh 2 lan ghi ghi de len nhau
+    // -> tranh corrupt /etc/hosts (vd byte rac lot vao dau file).
+    let unique = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let tmp = std::env::temp_dir().join(format!(
+        "hostman_hosts_{}_{unique}.tmp",
+        std::process::id()
+    ));
     fs::write(&tmp, content).map_err(|e| format!("Ghi temp loi: {e}"))?;
     let target = hosts_path();
 
@@ -183,6 +192,7 @@ mod tests {
             target: "localhost:3000".into(),
             https: true,
             enabled,
+            paths: vec![],
         }
     }
 
