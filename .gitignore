@@ -12,7 +12,7 @@ dist
 dist-ssr
 *.local
 
-# Caddy sidecar binaries (tai bang scripts/fetch-caddy.mjs)
+# Caddy sidecar binaries (downloaded by scripts/fetch-caddy.mjs)
 src-tauri/binaries/
 
 # Editor directories and files
@@ -25,3 +25,7 @@ src-tauri/binaries/
 *.njsproj
 *.sln
 *.sw?
+
+# AI assistant instructions (local only)
+CLAUDE.md
+.claude/
