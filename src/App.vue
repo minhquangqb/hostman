@@ -58,12 +58,12 @@ function openEdit(h: Host) {
   editing.value = { ...h };
 }
 async function onSaveHost(h: Host) {
-  const c = await run(() => api.saveHost(h), "Đã lưu host");
+  const c = await run(() => api.saveHost(h), "Host saved");
   if (c) config.value = c;
   editing.value = null;
 }
 async function onDelete(h: Host) {
-  const c = await run(() => api.deleteHost(h.id), "Đã xoá");
+  const c = await run(() => api.deleteHost(h.id), "Deleted");
   if (c) config.value = c;
 }
 async function onToggle(h: Host) {
@@ -73,7 +73,7 @@ async function onToggle(h: Host) {
 
 // ---- Apply ----
 async function applyAll() {
-  await run(api.applyAll, "Đã áp dụng: hosts file + Caddy");
+  await run(api.applyAll, "Applied: hosts file + Caddy");
   await refresh();
 }
 async function showHostsPreview() {
@@ -90,50 +90,50 @@ async function openHostsFile() {
 
 // ---- Caddy ----
 async function caddyStart() {
-  await run(api.caddyStart, "Caddy đã khởi động");
+  await run(api.caddyStart, "Caddy started");
   caddy.value = (await run(api.caddyStatus)) ?? caddy.value;
 }
 async function caddyStop() {
-  await run(api.caddyStop, "Caddy đã dừng");
+  await run(api.caddyStop, "Caddy stopped");
   caddy.value = (await run(api.caddyStatus)) ?? caddy.value;
 }
 async function caddyTrust() {
-  await run(api.caddyTrust, "Đã cài CA — HTTPS local giờ được tin cậy");
+  await run(api.caddyTrust, "CA installed — local HTTPS is now trusted");
 }
 
 // ---- Service (launchd) ----
 async function serviceInstall() {
-  const s = await run(api.serviceInstall, "Đã cài Caddy làm service (tự khởi động)");
+  const s = await run(api.serviceInstall, "Caddy installed as a service (auto-start)");
   if (s) service.value = s;
   caddy.value = (await run(api.caddyStatus)) ?? caddy.value;
 }
 async function serviceUninstall() {
-  const s = await run(api.serviceUninstall, "Đã gỡ service");
+  const s = await run(api.serviceUninstall, "Service removed");
   if (s) service.value = s;
   caddy.value = (await run(api.caddyStatus)) ?? caddy.value;
 }
 
 // ---- Git ----
 async function gitInit() {
-  const s = await run(api.gitInit, "Đã khởi tạo git repo");
+  const s = await run(api.gitInit, "Git repo initialized");
   if (s) git.value = s;
 }
 async function gitCommit() {
-  const s = await run(() => api.gitCommit("chore: update dev hosts"), "Đã commit");
+  const s = await run(() => api.gitCommit("chore: update dev hosts"), "Committed");
   if (s) git.value = s;
 }
 async function gitPull() {
-  await run(api.gitPull, "Đã pull");
+  await run(api.gitPull, "Pulled");
   await refresh();
 }
 async function gitPush() {
-  await run(api.gitPush, "Đã push");
+  await run(api.gitPush, "Pushed");
   git.value = (await run(api.gitStatus)) ?? git.value;
 }
 async function gitSetRemote() {
-  const url = window.prompt("Remote URL (git):", git.value.remote ?? "");
+  const url = window.prompt("Git remote URL:", git.value.remote ?? "");
   if (!url) return;
-  const s = await run(() => api.gitSetRemote(url), "Đã gán remote");
+  const s = await run(() => api.gitSetRemote(url), "Remote set");
   if (s) git.value = s;
 }
 
@@ -155,33 +155,33 @@ async function openLink(h: Host) {
         <div class="logo">HM</div>
         <div>
           <h1>Hostman</h1>
-          <p class="sub">Quản lý dev host local · TLD mặc định <code>.{{ config.defaultTld }}</code></p>
+          <p class="sub">Manage local dev hosts · default TLD <code>.{{ config.defaultTld }}</code></p>
         </div>
       </div>
       <div class="caddy-status">
         <span class="dot" :class="{ on: caddy.running }"></span>
-        <span>Caddy: {{ caddy.running ? "đang chạy" : "đã dừng" }}</span>
+        <span>Caddy: {{ caddy.running ? "running" : "stopped" }}</span>
         <button v-if="!caddy.running" class="ghost sm" :disabled="busy" @click="caddyStart">Start</button>
         <button v-else class="ghost sm" :disabled="busy" @click="caddyStop">Stop</button>
-        <button class="ghost sm" :disabled="busy" title="Cài CA của Caddy vào trust store hệ thống (chạy 1 lần)" @click="caddyTrust">Trust HTTPS</button>
+        <button class="ghost sm" :disabled="busy" title="Install Caddy's CA into the system trust store (run once)" @click="caddyTrust">Trust HTTPS</button>
       </div>
     </header>
 
     <section class="toolbar">
-      <button class="primary" @click="openAdd">+ Thêm host</button>
+      <button class="primary" @click="openAdd">+ Add host</button>
       <div class="spacer"></div>
-      <button class="ghost" :disabled="busy" @click="showHostsPreview">Xem hosts</button>
-      <button class="ghost" :disabled="busy" title="Mở /etc/hosts bằng trình soạn thảo mặc định" @click="openHostsFile">Mở file hosts</button>
-      <button class="ghost" :disabled="busy" @click="showCaddyPreview">Xem Caddyfile</button>
-      <button class="accent" :disabled="busy" @click="applyAll">Áp dụng ⚡</button>
+      <button class="ghost" :disabled="busy" @click="showHostsPreview">View hosts</button>
+      <button class="ghost" :disabled="busy" title="Open /etc/hosts in the default editor" @click="openHostsFile">Open hosts file</button>
+      <button class="ghost" :disabled="busy" @click="showCaddyPreview">View Caddyfile</button>
+      <button class="accent" :disabled="busy" @click="applyAll">Apply ⚡</button>
     </section>
 
     <section class="list">
       <div v-if="config.hosts.length === 0" class="empty">
-        Chưa có host nào. Bấm <strong>+ Thêm host</strong> để bắt đầu.
+        No hosts yet. Click <strong>+ Add host</strong> to get started.
       </div>
       <div v-for="h in config.hosts" :key="h.id" class="card" :class="{ off: !h.enabled }">
-        <button class="toggle" :class="{ on: h.enabled }" :title="h.enabled ? 'Đang bật' : 'Đang tắt'" @click="onToggle(h)">
+        <button class="toggle" :class="{ on: h.enabled }" :title="h.enabled ? 'Enabled' : 'Disabled'" @click="onToggle(h)">
           <span></span>
         </button>
         <div class="info">
@@ -197,50 +197,50 @@ async function openLink(h: Host) {
           <span v-if="h.https" class="tag">HTTPS</span>
         </div>
         <div class="card-actions">
-          <button class="ghost sm" :disabled="!h.enabled || busy" title="Mở trong trình duyệt" @click="openLink(h)">Mở ↗</button>
-          <button class="ghost sm" @click="openEdit(h)">Sửa</button>
-          <button class="danger sm" @click="onDelete(h)">Xoá</button>
+          <button class="ghost sm" :disabled="!h.enabled || busy" title="Open in browser" @click="openLink(h)">Open ↗</button>
+          <button class="ghost sm" @click="openEdit(h)">Edit</button>
+          <button class="danger sm" @click="onDelete(h)">Delete</button>
         </div>
       </div>
     </section>
 
     <section class="git">
       <div class="git-head">
-        <h3>Chạy nền (Service)</h3>
+        <h3>Background service</h3>
         <span class="git-meta">
-          <span v-if="service.installed" class="badge ok">đã cài</span>
-          <span v-else class="badge warn">chưa cài</span>
+          <span v-if="service.installed" class="badge ok">installed</span>
+          <span v-else class="badge warn">not installed</span>
         </span>
       </div>
       <div v-if="!service.supported" class="git-actions">
-        <span class="muted">Hệ điều hành này chưa hỗ trợ chạy Caddy như service.</span>
+        <span class="muted">This operating system does not yet support running Caddy as a service.</span>
       </div>
       <div v-else class="git-actions">
         <span class="muted">
-          Cài Caddy làm dịch vụ nền (launchd) để tự khởi động cùng máy và không phải cấp quyền admin mỗi lần.
+          Install Caddy as a background service (launchd) so it auto-starts with the machine and no longer prompts for admin each time.
         </span>
-        <button v-if="!service.installed" class="ghost sm" :disabled="busy" @click="serviceInstall">Cài service</button>
-        <button v-else class="danger sm" :disabled="busy" @click="serviceUninstall">Gỡ service</button>
+        <button v-if="!service.installed" class="ghost sm" :disabled="busy" @click="serviceInstall">Install service</button>
+        <button v-else class="danger sm" :disabled="busy" @click="serviceUninstall">Remove service</button>
       </div>
     </section>
 
     <section class="git">
       <div class="git-head">
-        <h3>Đồng bộ (Git)</h3>
+        <h3>Sync (Git)</h3>
         <span class="git-meta" v-if="git.is_repo">
-          <span v-if="git.dirty" class="badge warn">có thay đổi</span>
-          <span v-else class="badge ok">sạch</span>
+          <span v-if="git.dirty" class="badge warn">changes</span>
+          <span v-else class="badge ok">clean</span>
           <span v-if="git.ahead">↑{{ git.ahead }}</span>
           <span v-if="git.behind">↓{{ git.behind }}</span>
         </span>
       </div>
       <div v-if="!git.is_repo" class="git-actions">
-        <span class="muted">Thư mục config chưa phải git repo.</span>
-        <button class="ghost sm" :disabled="busy" @click="gitInit">Khởi tạo repo</button>
+        <span class="muted">The config folder is not a git repo yet.</span>
+        <button class="ghost sm" :disabled="busy" @click="gitInit">Init repo</button>
       </div>
       <div v-else class="git-actions">
-        <span class="muted">Remote: {{ git.remote ?? "chưa gán" }}</span>
-        <button class="ghost sm" :disabled="busy" @click="gitSetRemote">Gán remote</button>
+        <span class="muted">Remote: {{ git.remote ?? "not set" }}</span>
+        <button class="ghost sm" :disabled="busy" @click="gitSetRemote">Set remote</button>
         <button class="ghost sm" :disabled="busy" @click="gitCommit">Commit</button>
         <button class="ghost sm" :disabled="busy" @click="gitPull">Pull</button>
         <button class="ghost sm" :disabled="busy" @click="gitPush">Push</button>

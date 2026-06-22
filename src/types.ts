@@ -1,4 +1,4 @@
-// Khop voi struct trong src-tauri/src/models.rs
+// Mirrors the structs in src-tauri/src/models.rs
 
 export interface PathRoute {
   path: string;

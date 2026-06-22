@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Hostman — Quản lý virtual host local",
+        "title": "Hostman — Manage local virtual hosts",
         "width": 980,
         "height": 720
       }

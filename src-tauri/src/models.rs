@@ -8,38 +8,38 @@ fn default_tld() -> String {
     "test".to_string()
 }
 
-/// Mot route theo path trong cung mot domain, vd "/admin" -> "localhost:4000".
+/// A path-based route within a single domain, e.g. "/admin" -> "localhost:4000".
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PathRoute {
-    /// Path prefix, vd "/admin".
+    /// Path prefix, e.g. "/admin".
     pub path: String,
-    /// Dich reverse proxy cho path nay, vd "localhost:4000".
+    /// Reverse proxy target for this path, e.g. "localhost:4000".
     pub target: String,
-    /// Bo tien to path truoc khi proxy (handle_path thay vi handle).
+    /// Strip the path prefix before proxying (handle_path instead of handle).
     #[serde(default, rename = "stripPrefix")]
     pub strip_prefix: bool,
 }
 
-/// Mot dev host: domain -> target (host:port).
+/// A dev host: domain -> target (host:port).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Host {
     pub id: String,
-    /// Ten ngan gon de hien thi, vd "myapp".
+    /// Short display name, e.g. "myapp".
     pub name: String,
-    /// Domain day du, vd "myapp.test".
+    /// Full domain, e.g. "myapp.test".
     pub domain: String,
-    /// Dich reverse proxy mac dinh (catch-all), vd "localhost:2222".
+    /// Default reverse proxy target (catch-all), e.g. "localhost:2222".
     pub target: String,
     #[serde(default = "default_true")]
     pub https: bool,
     #[serde(default = "default_true")]
     pub enabled: bool,
-    /// Cac route theo path tro toi target rieng (vd /admin -> port khac).
+    /// Path-based routes pointing to separate targets (e.g. /admin -> a different port).
     #[serde(default)]
     pub paths: Vec<PathRoute>,
 }
 
-/// Config dong bo qua git (single source of truth).
+/// Config synced via git (single source of truth).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     #[serde(rename = "defaultTld", default = "default_tld")]
@@ -57,35 +57,35 @@ impl Default for Config {
     }
 }
 
-/// Trang thai cua Caddy proxy de hien thi tren UI.
+/// Status of the Caddy proxy for display in the UI.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CaddyStatus {
     pub running: bool,
-    /// Duong dan caddy binary dang dung (neu tim thay).
+    /// Path to the caddy binary in use (if found).
     pub binary: Option<String>,
 }
 
-/// Trang thai cua background service (launchd / Windows service).
+/// Status of the background service (launchd / Windows service).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServiceStatus {
-    /// OS hien tai co ho tro chay Caddy nhu service khong.
+    /// Whether the current OS supports running Caddy as a service.
     pub supported: bool,
-    /// Service da duoc cai (plist ton tai) chua.
+    /// Whether the service is installed (plist exists).
     pub installed: bool,
-    /// Caddy co dang chay (qua admin API) khong.
+    /// Whether Caddy is running (via the admin API).
     pub running: bool,
 }
 
-/// Trang thai git de hien thi tren UI.
+/// Git status for display in the UI.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GitStatus {
-    /// Thu muc config co phai git repo khong.
+    /// Whether the config directory is a git repo.
     pub is_repo: bool,
-    /// Co thay doi chua commit khong.
+    /// Whether there are uncommitted changes.
     pub dirty: bool,
-    /// So commit ahead/behind so voi remote (neu co).
+    /// Number of commits ahead/behind the remote (if any).
     pub ahead: i32,
     pub behind: i32,
-    /// Remote URL neu co.
+    /// Remote URL if present.
     pub remote: Option<String>,
 }

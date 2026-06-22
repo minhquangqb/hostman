@@ -11,7 +11,7 @@ const emit = defineEmits<{ (e: "close"): void }>();
     <div class="modal">
       <div class="head">
         <h2>{{ title }}</h2>
-        <button class="ghost" @click="emit('close')">Đóng</button>
+        <button class="ghost" @click="emit('close')">Close</button>
       </div>
       <pre>{{ content }}</pre>
     </div>

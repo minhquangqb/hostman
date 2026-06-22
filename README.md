@@ -115,7 +115,7 @@ To sync across machines: in the app, **Init repo → Set remote → Push**. On a
 - **Ports 80/443** require elevation on macOS/Linux (binding ports below 1024 needs root). Hostman prompts for administrator access when starting the proxy.
 - **`.local` is reserved by mDNS on macOS** and can be slow or unreliable — prefer `.test`. Hostman lets you set any domain per host.
 - **HTTPS trust** — click **Trust HTTPS** in the header once to install the local CA into the system trust store.
-- **Background service** — under **Chạy nền (Service)**, install Caddy as an OS service so it auto-starts with the machine, binds 80/443 without re-prompting for admin each time, and keeps running across logins. Use **Gỡ service** to remove it. When the service is installed, prefer reloading config over the manual Start/Stop buttons.
+- **Background service** — under **Background service**, install Caddy as an OS service so it auto-starts with the machine, binds 80/443 without re-prompting for admin each time, and keeps running across logins. Use **Remove service** to remove it. When the service is installed, prefer reloading config over the manual Start/Stop buttons.
   - **macOS** — a `launchd` LaunchDaemon (`/Library/LaunchDaemons/com.hostman.caddy.plist`) running as root.
   - **Windows** — a Scheduled Task named `Hostman Caddy` running as `SYSTEM` with highest privileges, triggered at boot. Installing/removing prompts for UAC once.
 - **Tray icon** — closing the window hides Hostman to the system tray; the app keeps running. Reopen from the tray icon or quit via the tray menu.

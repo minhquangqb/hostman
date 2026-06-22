@@ -1,13 +1,13 @@
-//! Chay Caddy nhu mot background service (auto-start, khong xin quyen lap lai).
+//! Run Caddy as a background service (auto-start, no repeated privilege prompts).
 //!
-//! macOS: LaunchDaemon tai `/Library/LaunchDaemons/com.hostman.caddy.plist`
-//! (chay duoi quyen root nen bind duoc 80/443 va tu khoi dong khi may bat).
+//! macOS: LaunchDaemon at `/Library/LaunchDaemons/com.hostman.caddy.plist`
+//! (runs as root so it can bind 80/443 and starts automatically on boot).
 //!
-//! Windows: Scheduled Task "Hostman Caddy" chay duoi tai khoan SYSTEM
-//! (RunLevel = HighestAvailable) voi trigger luc khoi dong may (BootTrigger).
-//! Chay elevated nen bind duoc 80/443 va tu khoi dong cung Windows.
+//! Windows: Scheduled Task "Hostman Caddy" running under the SYSTEM account
+//! (RunLevel = HighestAvailable) with a boot trigger (BootTrigger).
+//! Runs elevated so it can bind 80/443 and starts automatically with Windows.
 //!
-//! Cac OS khac: chua ho tro (tra ve loi ro rang).
+//! Other operating systems: not yet supported (returns a clear error).
 
 use crate::caddy;
 use crate::config;
@@ -24,7 +24,7 @@ fn plist_system_path() -> std::path::PathBuf {
     std::path::PathBuf::from(format!("/Library/LaunchDaemons/{LABEL}.plist"))
 }
 
-/// Trang thai service de hien thi tren UI.
+/// Service status to display in the UI.
 pub fn status() -> ServiceStatus {
     #[cfg(target_os = "macos")]
     {
@@ -52,15 +52,15 @@ pub fn status() -> ServiceStatus {
     }
 }
 
-/// Cai service: ghi Caddyfile, sinh dinh nghia service, dang ky va khoi dong.
-/// Chi xin quyen admin 1 lan.
+/// Install the service: write the Caddyfile, generate the service definition, register and start it.
+/// Requests admin privileges only once.
 pub fn install() -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         let cfg = config::load_config()?;
         let caddyfile = caddy::write_caddyfile(&cfg)?;
         let bin = caddy::find_caddy().ok_or_else(|| {
-            "Khong tim thay caddy binary. Cai caddy hoac dat sidecar canh app.".to_string()
+            "Caddy binary not found. Install caddy or place the sidecar next to the app.".to_string()
         })?;
 
         let log = config::base_dir()?.join("caddy.log");
@@ -73,16 +73,16 @@ pub fn install() -> Result<(), String> {
             &err_log.display().to_string(),
         );
 
-        // Ghi plist tam vao thu muc user (khong can quyen).
+        // Write a temporary plist into the user directory (no privileges required).
         let staged = config::base_dir()?.join(format!("{LABEL}.plist"));
-        std::fs::write(&staged, &plist).map_err(|e| format!("Ghi plist tam loi: {e}"))?;
+        std::fs::write(&staged, &plist).map_err(|e| format!("Failed to write temporary plist: {e}"))?;
 
         let dst = plist_system_path();
         let dst = dst.display().to_string();
         let staged = staged.display().to_string();
 
-        // Gop tat ca thao tac can quyen vao 1 lenh admin.
-        // bootout truoc de tranh loi "already loaded" khi cai lai.
+        // Combine all privileged operations into a single admin command.
+        // bootout first to avoid the "already loaded" error on reinstall.
         let shell = format!(
             "cp '{staged}' '{dst}' && chown root:wheel '{dst}' && chmod 644 '{dst}' && \
              launchctl bootout system/{LABEL} 2>/dev/null; \
@@ -96,12 +96,12 @@ pub fn install() -> Result<(), String> {
         let cfg = config::load_config()?;
         let caddyfile = caddy::write_caddyfile(&cfg)?;
         let bin = caddy::find_caddy().ok_or_else(|| {
-            "Khong tim thay caddy binary. Cai caddy hoac dat sidecar canh app.".to_string()
+            "Caddy binary not found. Install caddy or place the sidecar next to the app.".to_string()
         })?;
         let workdir = config::config_dir()?;
 
-        // Sinh dinh nghia task duoi dang XML (tranh viec escape nested-quote khi
-        // path co dau cach nhu "C:\Program Files\...").
+        // Generate the task definition as XML (avoids nested-quote escaping when
+        // the path contains spaces, e.g. "C:\Program Files\...").
         let xml = render_task_xml(
             &bin.display().to_string(),
             &caddyfile.display().to_string(),
@@ -109,9 +109,9 @@ pub fn install() -> Result<(), String> {
         );
         let xml_path = config::base_dir()?.join("hostman-caddy-task.xml");
         write_utf16le_bom(&xml_path, &xml)
-            .map_err(|e| format!("Ghi file XML task loi: {e}"))?;
+            .map_err(|e| format!("Failed to write task XML file: {e}"))?;
 
-        // Tao (ghi de) task tu XML roi chay ngay. Gop vao 1 lan elevation.
+        // Create (overwrite) the task from XML, then run it immediately. Combined into a single elevation.
         let bat = format!(
             "@echo off\r\n\
              schtasks /Create /TN \"{TASK_NAME}\" /XML \"{xml}\" /F\r\n\
@@ -125,11 +125,11 @@ pub fn install() -> Result<(), String> {
     }
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
-        Err("Chay Caddy nhu service hien chi ho tro tren macOS va Windows.".into())
+        Err("Running Caddy as a service is currently only supported on macOS and Windows.".into())
     }
 }
 
-/// Go service: dung va xoa dang ky.
+/// Uninstall the service: stop it and remove the registration.
 pub fn uninstall() -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
@@ -140,7 +140,7 @@ pub fn uninstall() -> Result<(), String> {
     }
     #[cfg(target_os = "windows")]
     {
-        // /End dung instance dang chay (kill caddy), roi /Delete xoa task.
+        // /End stops the running instance (kills caddy), then /Delete removes the task.
         let bat = format!(
             "@echo off\r\n\
              schtasks /End /TN \"{TASK_NAME}\" >nul 2>&1\r\n\
@@ -152,7 +152,7 @@ pub fn uninstall() -> Result<(), String> {
     }
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
-        Err("Chay Caddy nhu service hien chi ho tro tren macOS va Windows.".into())
+        Err("Running Caddy as a service is currently only supported on macOS and Windows.".into())
     }
 }
 
@@ -186,20 +186,20 @@ fn render_plist(bin: &str, caddyfile: &str, log: &str, err_log: &str) -> String 
     )
 }
 
-/// Chay 1 shell script voi quyen admin qua dialog he thong (macOS).
+/// Run a shell script with admin privileges via the system dialog (macOS).
 #[cfg(target_os = "macos")]
 fn run_admin_shell(cmd: &str) -> Result<(), String> {
     use std::process::Command;
-    // Escape cho chuoi AppleScript.
+    // Escape for the AppleScript string.
     let escaped = cmd.replace('\\', "\\\\").replace('"', "\\\"");
     let script = format!("do shell script \"{escaped}\" with administrator privileges");
     let status = Command::new("osascript")
         .arg("-e")
         .arg(&script)
         .status()
-        .map_err(|e| format!("Chay osascript loi: {e}"))?;
+        .map_err(|e| format!("Failed to run osascript: {e}"))?;
     if !status.success() {
-        return Err("Thao tac admin that bai (cap quyen bi tu choi?)".into());
+        return Err("Admin operation failed (privileges denied?)".into());
     }
     Ok(())
 }
@@ -209,7 +209,7 @@ fn run_admin_shell(cmd: &str) -> Result<(), String> {
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
-/// Task da duoc dang ky chua (khong can quyen admin de query).
+/// Whether the task is already registered (no admin privileges needed to query).
 #[cfg(target_os = "windows")]
 fn task_exists() -> bool {
     use std::os::windows::process::CommandExt;
@@ -222,11 +222,11 @@ fn task_exists() -> bool {
         .unwrap_or(false)
 }
 
-/// Sinh XML dinh nghia Scheduled Task chay caddy duoi SYSTEM luc khoi dong may.
+/// Generate the Scheduled Task XML that runs caddy under SYSTEM at boot.
 ///
-/// - `S-1-5-18`: SID cua tai khoan SYSTEM (dung SID de khoi le thuoc ngon ngu OS).
-/// - `RunLevel = HighestAvailable`: chay elevated (bind 80/443).
-/// - `ExecutionTimeLimit = PT0S`: khong gioi han thoi gian (caddy chay mai).
+/// - `S-1-5-18`: SID of the SYSTEM account (using the SID avoids dependence on the OS language).
+/// - `RunLevel = HighestAvailable`: run elevated (bind 80/443).
+/// - `ExecutionTimeLimit = PT0S`: no time limit (caddy runs indefinitely).
 #[cfg(target_os = "windows")]
 fn render_task_xml(bin: &str, caddyfile: &str, workdir: &str) -> String {
     let bin = xml_escape(bin);
@@ -236,7 +236,7 @@ fn render_task_xml(bin: &str, caddyfile: &str, workdir: &str) -> String {
         r#"<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
-    <Description>Hostman - chay Caddy reverse proxy khi khoi dong may</Description>
+    <Description>Hostman - run the Caddy reverse proxy at system boot</Description>
   </RegistrationInfo>
   <Triggers>
     <BootTrigger>
@@ -284,7 +284,7 @@ fn xml_escape(s: &str) -> String {
         .replace('"', "&quot;")
 }
 
-/// Ghi file UTF-16LE co BOM — `schtasks /XML` mong file UTF-16.
+/// Write a UTF-16LE file with a BOM — `schtasks /XML` expects a UTF-16 file.
 #[cfg(target_os = "windows")]
 fn write_utf16le_bom(path: &std::path::Path, text: &str) -> std::io::Result<()> {
     let mut bytes = vec![0xFF, 0xFE]; // BOM UTF-16LE
@@ -294,18 +294,18 @@ fn write_utf16le_bom(path: &std::path::Path, text: &str) -> std::io::Result<()> 
     std::fs::write(path, bytes)
 }
 
-/// Ghi `script` ra 1 file .bat tam roi chay voi quyen admin qua UAC.
-/// Dung PowerShell `Start-Process -Verb RunAs -Wait` de bat dialog UAC 1 lan
-/// va doi ket qua; exit code cua .bat quyet dinh thanh/bai.
+/// Write `script` to a temporary .bat file, then run it with admin privileges via UAC.
+/// Uses PowerShell `Start-Process -Verb RunAs -Wait` to trigger the UAC dialog once
+/// and wait for the result; the .bat's exit code determines success/failure.
 #[cfg(target_os = "windows")]
 fn run_admin_bat(file_name: &str, script: &str) -> Result<(), String> {
     use std::os::windows::process::CommandExt;
     use std::process::Command;
 
     let bat_path = config::base_dir()?.join(file_name);
-    std::fs::write(&bat_path, script).map_err(|e| format!("Ghi file .bat loi: {e}"))?;
+    std::fs::write(&bat_path, script).map_err(|e| format!("Failed to write .bat file: {e}"))?;
 
-    // Chuoi single-quote cua PowerShell: escape ' thanh ''.
+    // PowerShell single-quoted string: escape ' as ''.
     let p = bat_path.display().to_string().replace('\'', "''");
     let ps = format!(
         "$ErrorActionPreference='Stop'; \
@@ -317,9 +317,9 @@ fn run_admin_bat(file_name: &str, script: &str) -> Result<(), String> {
         .args(["-NoProfile", "-NonInteractive", "-Command", &ps])
         .creation_flags(CREATE_NO_WINDOW)
         .status()
-        .map_err(|e| format!("Chay PowerShell loi: {e}"))?;
+        .map_err(|e| format!("Failed to run PowerShell: {e}"))?;
     if !status.success() {
-        return Err("Thao tac admin that bai (UAC bi tu choi?)".into());
+        return Err("Admin operation failed (UAC denied?)".into());
     }
     Ok(())
 }

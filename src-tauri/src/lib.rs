@@ -32,7 +32,7 @@ fn set_default_tld(tld: String) -> Result<Config, String> {
     Ok(cfg)
 }
 
-/// Them moi neu id rong, hoac cap nhat host co san.
+/// Add a new host if the id is empty, otherwise update the existing host.
 #[tauri::command]
 fn save_host(mut host: Host) -> Result<Config, String> {
     let mut cfg = config::load_config()?;
@@ -69,21 +69,21 @@ fn toggle_host(id: String, enabled: bool) -> Result<Config, String> {
 
 // ---------- Apply (hosts file + caddy) ----------
 
-/// Preview noi dung hosts file se duoc ghi.
+/// Preview the contents of the hosts file that will be written.
 #[tauri::command]
 fn preview_hosts() -> Result<String, String> {
     let cfg = config::load_config()?;
     hosts_file::render_hosts(&cfg)
 }
 
-/// Preview Caddyfile se duoc sinh.
+/// Preview the Caddyfile that will be generated.
 #[tauri::command]
 fn preview_caddyfile() -> Result<String, String> {
     let cfg = config::load_config()?;
     Ok(caddy::generate_caddyfile(&cfg))
 }
 
-/// Ghi hosts file (xin quyen admin) va reload/start caddy.
+/// Write the hosts file (requesting admin privileges) and reload/start caddy.
 #[tauri::command]
 fn apply_all() -> Result<(), String> {
     let cfg = config::load_config()?;
@@ -92,14 +92,14 @@ fn apply_all() -> Result<(), String> {
     Ok(())
 }
 
-/// Chi cap nhat hosts file.
+/// Only update the hosts file.
 #[tauri::command]
 fn apply_hosts() -> Result<(), String> {
     let cfg = config::load_config()?;
     hosts_file::apply(&cfg)
 }
 
-/// Mo file hosts (/etc/hosts) bang trinh soan thao mac dinh.
+/// Open the hosts file (/etc/hosts) in the default editor.
 #[tauri::command]
 fn open_hosts_file() -> Result<(), String> {
     hosts_file::open_in_editor()
@@ -129,7 +129,7 @@ fn caddy_reload() -> Result<(), String> {
     caddy::reload(&cfg)
 }
 
-/// Cai local CA cua Caddy vao trust store he thong (cho HTTPS tin cay).
+/// Install Caddy's local CA into the system trust store (for trusted HTTPS).
 #[tauri::command]
 fn caddy_trust() -> Result<(), String> {
     caddy::trust()
@@ -189,7 +189,7 @@ fn git_push() -> Result<String, String> {
     git_sync::push()
 }
 
-/// Hien va focus cua so chinh.
+/// Show and focus the main window.
 fn show_main(app: &tauri::AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.show();
@@ -198,11 +198,11 @@ fn show_main(app: &tauri::AppHandle) {
     }
 }
 
-/// Tao system tray icon voi menu Show / Quit.
+/// Create the system tray icon with a Show / Quit menu.
 fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
-    let show_i = MenuItem::with_id(app, "show", "Mở Hostman", true, None::<&str>)?;
+    let show_i = MenuItem::with_id(app, "show", "Open Hostman", true, None::<&str>)?;
     let sep = PredefinedMenuItem::separator(app)?;
-    let quit_i = MenuItem::with_id(app, "quit", "Thoát", true, None::<&str>)?;
+    let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show_i, &sep, &quit_i])?;
 
     let mut builder = TrayIconBuilder::with_id("main")
@@ -242,7 +242,7 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            // Dong cua so -> an xuong tray thay vi thoat (app van chay nen).
+            // Closing the window hides it to the tray instead of quitting (the app keeps running in the background).
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let _ = window.hide();
                 api.prevent_close();

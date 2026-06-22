@@ -13,7 +13,7 @@ fn git(args: &[&str]) -> Result<std::process::Output, String> {
         .current_dir(&dir)
         .args(args)
         .output()
-        .map_err(|e| format!("Chay git loi: {e}"))
+        .map_err(|e| format!("Failed to run git: {e}"))
 }
 
 fn git_ok(args: &[&str]) -> Result<String, String> {
@@ -30,7 +30,7 @@ fn is_repo() -> bool {
         .unwrap_or(false)
 }
 
-/// Khoi tao git repo tai thu muc config (neu chua co).
+/// Initialize a git repo in the config directory (if not already one).
 pub fn init() -> Result<(), String> {
     config::ensure_dir()?;
     if is_repo() {
@@ -38,12 +38,12 @@ pub fn init() -> Result<(), String> {
     }
     git_ok(&["init"])?;
     git_ok(&["add", "-A"])?;
-    // Commit dau tien co the loi neu chua co user.name/email -> bo qua loi commit.
+    // The first commit may fail if user.name/email is not set -> ignore the commit error.
     let _ = git(&["commit", "-m", "chore: init hostman config"]);
     Ok(())
 }
 
-/// Gan remote origin.
+/// Set the origin remote.
 pub fn set_remote(url: &str) -> Result<(), String> {
     if git(&["remote", "get-url", "origin"])
         .map(|o| o.status.success())
@@ -90,11 +90,11 @@ pub fn status() -> GitStatus {
     }
 }
 
-/// Commit toan bo thay doi.
+/// Commit all changes.
 pub fn commit(message: &str) -> Result<(), String> {
     git_ok(&["add", "-A"])?;
     let out = git(&["commit", "-m", message])?;
-    // "nothing to commit" khong phai loi.
+    // "nothing to commit" is not an error.
     if !out.status.success() {
         let err = String::from_utf8_lossy(&out.stdout);
         if err.contains("nothing to commit") {
@@ -110,6 +110,6 @@ pub fn pull() -> Result<String, String> {
 }
 
 pub fn push() -> Result<String, String> {
-    // -u de set upstream lan dau.
+    // -u to set the upstream on the first push.
     git_ok(&["push", "-u", "origin", "HEAD"])
 }

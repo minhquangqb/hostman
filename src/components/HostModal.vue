@@ -31,7 +31,7 @@ function removePath(i: number) {
   form.paths.splice(i, 1);
 }
 
-// Tu dong goi y domain tu name + defaultTld neu user chua nhap domain.
+// Auto-suggest the domain from name + defaultTld while the user hasn't typed one.
 function onNameInput() {
   if (!form.domain || form.domain === lastSuggest.value) {
     const d = `${form.name}.${props.defaultTld}`;
@@ -42,22 +42,22 @@ function onNameInput() {
 const lastSuggest = { value: "" } as { value: string };
 
 const error = computed(() => {
-  if (!form.name.trim()) return "Tên không được để trống";
-  if (!form.domain.trim()) return "Domain không được để trống";
-  if (!/^[a-z0-9.-]+$/i.test(form.domain)) return "Domain chỉ gồm chữ, số, dấu chấm và gạch ngang";
-  if (!/^[^\s:]+:\d+$/.test(form.target)) return "Target phải dạng host:port (vd localhost:3000)";
+  if (!form.name.trim()) return "Name cannot be empty";
+  if (!form.domain.trim()) return "Domain cannot be empty";
+  if (!/^[a-z0-9.-]+$/i.test(form.domain)) return "Domain may only contain letters, numbers, dots and hyphens";
+  if (!/^[^\s:]+:\d+$/.test(form.target)) return "Target must be host:port (e.g. localhost:3000)";
   for (const [i, p] of form.paths.entries()) {
     const n = i + 1;
-    if (!p.path.trim()) return `Path #${n}: chưa nhập path (vd /admin)`;
-    if (!/^\/[\w\-./]*\*?$/.test(p.path.trim())) return `Path #${n}: path không hợp lệ (bắt đầu bằng /)`;
-    if (!/^[^\s:]+:\d+$/.test(p.target)) return `Path #${n}: target phải dạng host:port`;
+    if (!p.path.trim()) return `Path #${n}: path is required (e.g. /admin)`;
+    if (!/^\/[\w\-./]*\*?$/.test(p.path.trim())) return `Path #${n}: invalid path (must start with /)`;
+    if (!/^[^\s:]+:\d+$/.test(p.target)) return `Path #${n}: target must be host:port`;
   }
   return "";
 });
 
 function submit() {
   if (error.value) return;
-  // Loai bo cac dong path rong truoc khi luu.
+  // Drop empty path rows before saving.
   const paths = form.paths
     .filter((p) => p.path.trim() && p.target.trim())
     .map((p) => ({ ...p, path: p.path.trim(), target: p.target.trim() }));
@@ -68,9 +68,9 @@ function submit() {
 <template>
   <div class="overlay" @click.self="emit('close')">
     <div class="modal">
-      <h2>{{ isEdit ? "Sửa host" : "Thêm host mới" }}</h2>
+      <h2>{{ isEdit ? "Edit host" : "Add new host" }}</h2>
 
-      <label>Tên
+      <label>Name
         <input v-model="form.name" @input="onNameInput" placeholder="myapp" autofocus />
       </label>
 
@@ -78,39 +78,39 @@ function submit() {
         <input v-model="form.domain" placeholder="myapp.test" />
       </label>
 
-      <label>Target mặc định (host:port)
+      <label>Default target (host:port)
         <input v-model="form.target" placeholder="localhost:2222" />
       </label>
 
       <div class="paths">
         <div class="paths-head">
-          <span class="paths-title">Path riêng <span class="hint">(tuỳ chọn)</span></span>
-          <button type="button" class="ghost xs" @click="addPath">+ Thêm path</button>
+          <span class="paths-title">Per-path routing <span class="hint">(optional)</span></span>
+          <button type="button" class="ghost xs" @click="addPath">+ Add path</button>
         </div>
         <p v-if="form.paths.length === 0" class="paths-empty">
-          Chưa có. Vd: <code>/admin</code> trỏ tới <code>localhost:4000</code>, phần còn lại về target mặc định.
+          None yet. E.g. <code>/admin</code> points to <code>localhost:4000</code>, everything else falls back to the default target.
         </p>
         <div v-for="(p, i) in form.paths" :key="i" class="path-row">
           <input v-model="p.path" class="p-path" placeholder="/admin" />
           <span class="arrow">→</span>
           <input v-model="p.target" class="p-target" placeholder="localhost:4000" />
-          <label class="check strip" title="Bỏ tiền tố path trước khi proxy (handle_path)">
+          <label class="check strip" title="Strip the path prefix before proxying (handle_path)">
             <input type="checkbox" v-model="p.stripPrefix" /> strip
           </label>
-          <button type="button" class="danger xs" title="Xoá path" @click="removePath(i)">✕</button>
+          <button type="button" class="danger xs" title="Remove path" @click="removePath(i)">✕</button>
         </div>
       </div>
 
       <div class="row">
         <label class="check"><input type="checkbox" v-model="form.https" /> HTTPS</label>
-        <label class="check"><input type="checkbox" v-model="form.enabled" /> Bật</label>
+        <label class="check"><input type="checkbox" v-model="form.enabled" /> Enabled</label>
       </div>
 
       <p v-if="error" class="error">{{ error }}</p>
 
       <div class="actions">
-        <button class="ghost" @click="emit('close')">Huỷ</button>
-        <button class="primary" :disabled="!!error" @click="submit">Lưu</button>
+        <button class="ghost" @click="emit('close')">Cancel</button>
+        <button class="primary" :disabled="!!error" @click="submit">Save</button>
       </div>
     </div>
   </div>

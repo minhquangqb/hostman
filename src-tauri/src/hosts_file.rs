@@ -5,7 +5,7 @@ use std::path::PathBuf;
 const BEGIN_MARKER: &str = "# >>> hostman managed >>>";
 const END_MARKER: &str = "# <<< hostman managed <<<";
 
-/// Duong dan hosts file theo OS.
+/// Path to the hosts file for the current OS.
 pub fn hosts_path() -> PathBuf {
     #[cfg(windows)]
     {
@@ -17,7 +17,7 @@ pub fn hosts_path() -> PathBuf {
     }
 }
 
-/// Tao noi dung block managed tu config.
+/// Build the managed block content from the config.
 fn build_block(cfg: &Config) -> String {
     let mut lines = vec![BEGIN_MARKER.to_string()];
     for h in &cfg.hosts {
@@ -30,7 +30,7 @@ fn build_block(cfg: &Config) -> String {
     lines.join("\n")
 }
 
-/// Bo block managed cu khoi noi dung hosts file.
+/// Remove the existing managed block from the hosts file content.
 fn strip_block(content: &str) -> String {
     let mut out = String::new();
     let mut in_block = false;
@@ -52,7 +52,7 @@ fn strip_block(content: &str) -> String {
     out
 }
 
-/// Render noi dung hosts file moi (giu nguyen phan ngoai block, thay block managed).
+/// Render the new hosts file content (preserving everything outside the block, replacing the managed block).
 pub fn render_hosts(cfg: &Config) -> Result<String, String> {
     let path = hosts_path();
     let current = fs::read_to_string(&path).unwrap_or_default();
@@ -65,10 +65,11 @@ pub fn render_hosts(cfg: &Config) -> Result<String, String> {
     Ok(out)
 }
 
-/// Ghi hosts file voi quyen admin (gom 1 lan xin quyen).
+/// Write the hosts file with admin privileges (prompting for privileges only once).
 pub fn write_hosts_elevated(content: &str) -> Result<(), String> {
-    // Temp file dat ten duy nhat (pid + nanos) de tranh 2 lan ghi ghi de len nhau
-    // -> tranh corrupt /etc/hosts (vd byte rac lot vao dau file).
+    // Give the temp file a unique name (pid + nanos) to avoid two writes
+    // overwriting each other -> prevents corrupting /etc/hosts (e.g. garbage
+    // bytes leaking into the start of the file).
     let unique = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos())
@@ -77,12 +78,12 @@ pub fn write_hosts_elevated(content: &str) -> Result<(), String> {
         "hostman_hosts_{}_{unique}.tmp",
         std::process::id()
     ));
-    fs::write(&tmp, content).map_err(|e| format!("Ghi temp loi: {e}"))?;
+    fs::write(&tmp, content).map_err(|e| format!("Failed to write temp file: {e}"))?;
     let target = hosts_path();
 
     #[cfg(target_os = "macos")]
     {
-        // osascript xin quyen admin qua dialog he thong.
+        // osascript requests admin privileges via the system dialog.
         let script = format!(
             "do shell script \"cp '{}' '{}'\" with administrator privileges",
             tmp.display(),
@@ -92,15 +93,15 @@ pub fn write_hosts_elevated(content: &str) -> Result<(), String> {
             .arg("-e")
             .arg(&script)
             .status()
-            .map_err(|e| format!("Chay osascript loi: {e}"))?;
+            .map_err(|e| format!("Failed to run osascript: {e}"))?;
         if !status.success() {
-            return Err("Cap quyen admin bi tu choi hoac that bai".into());
+            return Err("Admin privileges were denied or the operation failed".into());
         }
     }
 
     #[cfg(target_os = "windows")]
     {
-        // Start-Process -Verb RunAs bat UAC.
+        // Start-Process -Verb RunAs triggers the UAC prompt.
         let inner = format!(
             "copy /Y \"{}\" \"{}\"",
             tmp.display(),
@@ -113,9 +114,9 @@ pub fn write_hosts_elevated(content: &str) -> Result<(), String> {
         let status = std::process::Command::new("powershell")
             .args(["-NoProfile", "-Command", &cmd])
             .status()
-            .map_err(|e| format!("Chay powershell loi: {e}"))?;
+            .map_err(|e| format!("Failed to run powershell: {e}"))?;
         if !status.success() {
-            return Err("Cap quyen admin bi tu choi hoac that bai".into());
+            return Err("Admin privileges were denied or the operation failed".into());
         }
     }
 
@@ -124,13 +125,13 @@ pub fn write_hosts_elevated(content: &str) -> Result<(), String> {
         let status = std::process::Command::new("pkexec")
             .args([
                 "cp",
-                tmp.to_str().ok_or("tmp path khong hop le")?,
-                target.to_str().ok_or("target path khong hop le")?,
+                tmp.to_str().ok_or("invalid tmp path")?,
+                target.to_str().ok_or("invalid target path")?,
             ])
             .status()
-            .map_err(|e| format!("Chay pkexec loi: {e}"))?;
+            .map_err(|e| format!("Failed to run pkexec: {e}"))?;
         if !status.success() {
-            return Err("Cap quyen admin bi tu choi hoac that bai".into());
+            return Err("Admin privileges were denied or the operation failed".into());
         }
     }
 
@@ -138,19 +139,19 @@ pub fn write_hosts_elevated(content: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Ap dung config len hosts file (render + ghi co quyen admin).
+/// Apply the config to the hosts file (render + write with admin privileges).
 pub fn apply(cfg: &Config) -> Result<(), String> {
     let content = render_hosts(cfg)?;
     write_hosts_elevated(&content)
 }
 
-/// Mo file hosts bang trinh soan thao mac dinh cua he thong.
+/// Open the hosts file in the system's default text editor.
 pub fn open_in_editor() -> Result<(), String> {
     let path = hosts_path();
 
     #[cfg(target_os = "macos")]
     let mut cmd = {
-        // `open -t` mo bang trinh soan thao van ban mac dinh.
+        // `open -t` opens the file in the default text editor.
         let mut c = std::process::Command::new("open");
         c.arg("-t").arg(&path);
         c
@@ -172,9 +173,9 @@ pub fn open_in_editor() -> Result<(), String> {
 
     let status = cmd
         .status()
-        .map_err(|e| format!("Khong mo duoc file hosts: {e}"))?;
+        .map_err(|e| format!("Failed to open the hosts file: {e}"))?;
     if !status.success() {
-        return Err("Mo file hosts that bai".into());
+        return Err("Failed to open the hosts file".into());
     }
     Ok(())
 }

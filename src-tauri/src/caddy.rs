@@ -6,16 +6,16 @@ use std::process::Command;
 
 const ADMIN_ADDR: &str = "localhost:2019";
 
-/// Tim caddy binary: env var -> sidecar canh executable -> PATH.
+/// Locate the caddy binary: env var -> sidecar next to the executable -> PATH.
 pub fn find_caddy() -> Option<PathBuf> {
-    // 0. Override qua env var (tien cho dev).
+    // 0. Override via env var (convenient for development).
     if let Ok(p) = std::env::var("HOSTMAN_CADDY") {
         let path = PathBuf::from(p);
         if path.exists() {
             return Some(path);
         }
     }
-    // 1. Sidecar canh executable cua app (Tauri bundle).
+    // 1. Sidecar next to the app executable (Tauri bundle).
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
             for name in caddy_names() {
@@ -50,8 +50,8 @@ fn caddy_names() -> Vec<&'static str> {
     }
 }
 
-/// Chuan hoa path thanh matcher cua Caddy: dam bao co dau "/" o dau va "*" o cuoi.
-/// Vd "/admin" -> "/admin*", "admin" -> "/admin*".
+/// Normalize a path into a Caddy matcher: ensure a leading "/" and a trailing "*".
+/// E.g. "/admin" -> "/admin*", "admin" -> "/admin*".
 fn path_matcher(path: &str) -> String {
     let p = path.trim();
     let p = if p.starts_with('/') {
@@ -66,14 +66,14 @@ fn path_matcher(path: &str) -> String {
     }
 }
 
-/// Sinh body cua mot site block (cac directive ben trong dau ngoac).
+/// Render the body of a site block (the directives inside the braces).
 fn render_site_body(default_target: &str, paths: &[PathRoute]) -> String {
     let active: Vec<&PathRoute> = paths
         .iter()
         .filter(|p| !p.path.trim().is_empty() && !p.target.trim().is_empty())
         .collect();
 
-    // Khong co path rieng -> proxy thang toi target mac dinh.
+    // No specific paths -> proxy straight to the default target.
     if active.is_empty() {
         return format!("\treverse_proxy {default_target}\n");
     }
@@ -81,21 +81,21 @@ fn render_site_body(default_target: &str, paths: &[PathRoute]) -> String {
     let mut body = String::new();
     for p in &active {
         let matcher = path_matcher(&p.path);
-        // handle_path bo tien to truoc khi proxy; handle giu nguyen path.
+        // handle_path strips the prefix before proxying; handle keeps the path intact.
         let directive = if p.strip_prefix { "handle_path" } else { "handle" };
         body.push_str(&format!(
             "\t{directive} {matcher} {{\n\t\treverse_proxy {}\n\t}}\n",
             p.target
         ));
     }
-    // Catch-all cho moi path con lai -> target mac dinh.
+    // Catch-all for any remaining paths -> default target.
     body.push_str(&format!(
         "\thandle {{\n\t\treverse_proxy {default_target}\n\t}}\n"
     ));
     body
 }
 
-/// Sinh noi dung Caddyfile tu config.
+/// Generate the Caddyfile contents from the config.
 pub fn generate_caddyfile(cfg: &Config) -> String {
     let mut out = String::new();
     out.push_str("{\n");
@@ -106,7 +106,7 @@ pub fn generate_caddyfile(cfg: &Config) -> String {
         if !h.enabled {
             continue;
         }
-        // Voi TLD noi bo (.test, .localhost) Caddy tu dung internal CA cho HTTPS.
+        // For internal TLDs (.test, .localhost) Caddy automatically uses its internal CA for HTTPS.
         let site = if h.https {
             h.domain.clone()
         } else {
@@ -118,23 +118,23 @@ pub fn generate_caddyfile(cfg: &Config) -> String {
     out
 }
 
-/// Ghi Caddyfile ra dia.
+/// Write the Caddyfile to disk.
 pub fn write_caddyfile(cfg: &Config) -> Result<PathBuf, String> {
     config::ensure_dir()?;
     let path = config::caddyfile_path()?;
-    fs::write(&path, generate_caddyfile(cfg)).map_err(|e| format!("Ghi Caddyfile loi: {e}"))?;
+    fs::write(&path, generate_caddyfile(cfg)).map_err(|e| format!("Failed to write Caddyfile: {e}"))?;
     Ok(path)
 }
 
-/// Caddy co dang chay khong (kiem tra admin API).
+/// Whether Caddy is currently running (checks the admin API).
 pub fn is_running() -> bool {
     let caddy = match find_caddy() {
         Some(c) => c,
         None => return false,
     };
-    // `caddy adapt` khong can server; dung `caddy version` + thu admin API qua curl khong kha dung.
-    // Cach don gian: thu reload voi config rong se loi neu chua chay -> thay vao do dung pidfile khong cross-platform.
-    // Tam thoi: hoi admin API qua chinh caddy bang lenh `caddy ... ` khong co san -> dung TcpStream.
+    // `caddy adapt` doesn't need a server; using `caddy version` + probing the admin API via curl isn't available.
+    // Simple approach: trying a reload with an empty config errors if it isn't running -> using a pidfile instead isn't cross-platform.
+    // For now: there's no built-in `caddy ...` command to query the admin API -> use a TcpStream.
     use std::net::TcpStream;
     let _ = caddy;
     TcpStream::connect(ADMIN_ADDR).is_ok()
@@ -149,22 +149,22 @@ pub fn status() -> CaddyStatus {
 
 fn caddy_cmd() -> Result<Command, String> {
     let bin = find_caddy().ok_or_else(|| {
-        "Khong tim thay caddy binary. Cai caddy hoac dat sidecar canh app.".to_string()
+        "caddy binary not found. Install caddy or place a sidecar next to the app.".to_string()
     })?;
     Ok(Command::new(bin))
 }
 
-/// Khoi dong caddy (background). Bind 80/443 can quyen root tren macOS/Linux
-/// nen tren cac OS do se xin quyen admin.
+/// Start caddy (in the background). Binding 80/443 requires root on macOS/Linux,
+/// so on those OSes it will prompt for admin privileges.
 pub fn start(cfg: &Config) -> Result<(), String> {
     let path = write_caddyfile(cfg)?;
     let bin = find_caddy().ok_or_else(|| {
-        "Khong tim thay caddy binary. Cai caddy hoac dat sidecar canh app.".to_string()
+        "caddy binary not found. Install caddy or place a sidecar next to the app.".to_string()
     })?;
 
     #[cfg(target_os = "macos")]
     {
-        // Chay `caddy start` voi quyen admin qua dialog he thong.
+        // Run `caddy start` with admin privileges via the system dialog.
         let script = format!(
             "do shell script \"'{}' start --config '{}'\" with administrator privileges",
             bin.display(),
@@ -174,9 +174,9 @@ pub fn start(cfg: &Config) -> Result<(), String> {
             .arg("-e")
             .arg(&script)
             .status()
-            .map_err(|e| format!("Chay osascript loi: {e}"))?;
+            .map_err(|e| format!("Failed to run osascript: {e}"))?;
         if !status.success() {
-            return Err("caddy start that bai (cap quyen admin bi tu choi?)".into());
+            return Err("caddy start failed (admin privileges denied?)".into());
         }
         return Ok(());
     }
@@ -189,30 +189,30 @@ pub fn start(cfg: &Config) -> Result<(), String> {
             .arg("--config")
             .arg(&path)
             .status()
-            .map_err(|e| format!("Chay pkexec loi: {e}"))?;
+            .map_err(|e| format!("Failed to run pkexec: {e}"))?;
         if !status.success() {
-            return Err("caddy start that bai (cap quyen admin bi tu choi?)".into());
+            return Err("caddy start failed (admin privileges denied?)".into());
         }
         return Ok(());
     }
 
     #[cfg(target_os = "windows")]
     {
-        // Windows thuong bind 80/443 khong can admin (hoac dung URL ACL).
+        // On Windows, binding 80/443 usually doesn't require admin (or uses a URL ACL).
         let status = Command::new(&bin)
             .arg("start")
             .arg("--config")
             .arg(&path)
             .status()
-            .map_err(|e| format!("caddy start loi: {e}"))?;
+            .map_err(|e| format!("caddy start error: {e}"))?;
         if !status.success() {
-            return Err("caddy start that bai".into());
+            return Err("caddy start failed".into());
         }
         Ok(())
     }
 }
 
-/// Reload config khong downtime (qua admin API).
+/// Reload the config with no downtime (via the admin API).
 pub fn reload(cfg: &Config) -> Result<(), String> {
     let path = write_caddyfile(cfg)?;
     let status = caddy_cmd()?
@@ -220,9 +220,9 @@ pub fn reload(cfg: &Config) -> Result<(), String> {
         .arg("--config")
         .arg(&path)
         .status()
-        .map_err(|e| format!("caddy reload loi: {e}"))?;
+        .map_err(|e| format!("caddy reload error: {e}"))?;
     if !status.success() {
-        return Err("caddy reload that bai".into());
+        return Err("caddy reload failed".into());
     }
     Ok(())
 }
@@ -231,14 +231,14 @@ pub fn stop() -> Result<(), String> {
     let status = caddy_cmd()?
         .arg("stop")
         .status()
-        .map_err(|e| format!("caddy stop loi: {e}"))?;
+        .map_err(|e| format!("caddy stop error: {e}"))?;
     if !status.success() {
-        return Err("caddy stop that bai".into());
+        return Err("caddy stop failed".into());
     }
     Ok(())
 }
 
-/// Apply: neu dang chay thi reload, neu chua thi start.
+/// Apply: reload if running, otherwise start.
 pub fn apply(cfg: &Config) -> Result<(), String> {
     if is_running() {
         reload(cfg)
@@ -289,14 +289,14 @@ mod tests {
         let out = generate_caddyfile(&cfg);
         assert!(out.contains("handle /admin* {"));
         assert!(out.contains("reverse_proxy localhost:4000"));
-        // Catch-all giu target mac dinh.
+        // Catch-all keeps the default target.
         assert!(out.contains("handle {\n\t\treverse_proxy localhost:3000"));
     }
 
     #[test]
     fn strip_prefix_uses_handle_path() {
         let routes = vec![PathRoute {
-            path: "admin".into(), // khong co dau "/" o dau -> tu them
+            path: "admin".into(), // no leading "/" -> added automatically
             target: "localhost:4000".into(),
             strip_prefix: true,
         }];
@@ -325,11 +325,11 @@ mod tests {
     }
 }
 
-/// Cai local CA cua Caddy vao system trust store (`caddy trust`).
-/// Chi can chay 1 lan; can quyen admin de ghi vao trust store he thong.
+/// Install Caddy's local CA into the system trust store (`caddy trust`).
+/// Only needs to run once; requires admin privileges to write to the system trust store.
 pub fn trust() -> Result<(), String> {
     let bin = find_caddy().ok_or_else(|| {
-        "Khong tim thay caddy binary. Cai caddy hoac dat sidecar canh app.".to_string()
+        "caddy binary not found. Install caddy or place a sidecar next to the app.".to_string()
     })?;
 
     #[cfg(target_os = "macos")]
@@ -342,9 +342,9 @@ pub fn trust() -> Result<(), String> {
             .arg("-e")
             .arg(&script)
             .status()
-            .map_err(|e| format!("Chay osascript loi: {e}"))?;
+            .map_err(|e| format!("Failed to run osascript: {e}"))?;
         if !status.success() {
-            return Err("caddy trust that bai (cap quyen admin bi tu choi?)".into());
+            return Err("caddy trust failed (admin privileges denied?)".into());
         }
         return Ok(());
     }
@@ -355,9 +355,9 @@ pub fn trust() -> Result<(), String> {
             .arg(bin.as_os_str())
             .arg("trust")
             .status()
-            .map_err(|e| format!("Chay pkexec loi: {e}"))?;
+            .map_err(|e| format!("Failed to run pkexec: {e}"))?;
         if !status.success() {
-            return Err("caddy trust that bai (cap quyen admin bi tu choi?)".into());
+            return Err("caddy trust failed (admin privileges denied?)".into());
         }
         return Ok(());
     }
@@ -367,9 +367,9 @@ pub fn trust() -> Result<(), String> {
         let status = Command::new(&bin)
             .arg("trust")
             .status()
-            .map_err(|e| format!("caddy trust loi: {e}"))?;
+            .map_err(|e| format!("caddy trust error: {e}"))?;
         if !status.success() {
-            return Err("caddy trust that bai".into());
+            return Err("caddy trust failed".into());
         }
         Ok(())
     }
