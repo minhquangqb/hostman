@@ -1,5 +1,5 @@
 use crate::config;
-use crate::models::{CaddyStatus, Config};
+use crate::models::{CaddyStatus, Config, PathRoute};
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
@@ -50,6 +50,51 @@ fn caddy_names() -> Vec<&'static str> {
     }
 }
 
+/// Chuan hoa path thanh matcher cua Caddy: dam bao co dau "/" o dau va "*" o cuoi.
+/// Vd "/admin" -> "/admin*", "admin" -> "/admin*".
+fn path_matcher(path: &str) -> String {
+    let p = path.trim();
+    let p = if p.starts_with('/') {
+        p.to_string()
+    } else {
+        format!("/{p}")
+    };
+    if p.ends_with('*') {
+        p
+    } else {
+        format!("{p}*")
+    }
+}
+
+/// Sinh body cua mot site block (cac directive ben trong dau ngoac).
+fn render_site_body(default_target: &str, paths: &[PathRoute]) -> String {
+    let active: Vec<&PathRoute> = paths
+        .iter()
+        .filter(|p| !p.path.trim().is_empty() && !p.target.trim().is_empty())
+        .collect();
+
+    // Khong co path rieng -> proxy thang toi target mac dinh.
+    if active.is_empty() {
+        return format!("\treverse_proxy {default_target}\n");
+    }
+
+    let mut body = String::new();
+    for p in &active {
+        let matcher = path_matcher(&p.path);
+        // handle_path bo tien to truoc khi proxy; handle giu nguyen path.
+        let directive = if p.strip_prefix { "handle_path" } else { "handle" };
+        body.push_str(&format!(
+            "\t{directive} {matcher} {{\n\t\treverse_proxy {}\n\t}}\n",
+            p.target
+        ));
+    }
+    // Catch-all cho moi path con lai -> target mac dinh.
+    body.push_str(&format!(
+        "\thandle {{\n\t\treverse_proxy {default_target}\n\t}}\n"
+    ));
+    body
+}
+
 /// Sinh noi dung Caddyfile tu config.
 pub fn generate_caddyfile(cfg: &Config) -> String {
     let mut out = String::new();
@@ -67,7 +112,8 @@ pub fn generate_caddyfile(cfg: &Config) -> String {
         } else {
             format!("http://{}", h.domain)
         };
-        out.push_str(&format!("{site} {{\n\treverse_proxy {}\n}}\n\n", h.target));
+        let body = render_site_body(&h.target, &h.paths);
+        out.push_str(&format!("{site} {{\n{body}}}\n\n"));
     }
     out
 }
@@ -198,6 +244,84 @@ pub fn apply(cfg: &Config) -> Result<(), String> {
         reload(cfg)
     } else {
         start(cfg)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::Host;
+
+    fn host(domain: &str, target: &str, paths: Vec<PathRoute>) -> Host {
+        Host {
+            id: "1".into(),
+            name: "x".into(),
+            domain: domain.into(),
+            target: target.into(),
+            https: true,
+            enabled: true,
+            paths,
+        }
+    }
+
+    #[test]
+    fn no_paths_renders_simple_reverse_proxy() {
+        let cfg = Config {
+            default_tld: "test".into(),
+            hosts: vec![host("a.test", "localhost:3000", vec![])],
+        };
+        let out = generate_caddyfile(&cfg);
+        assert!(out.contains("a.test {\n\treverse_proxy localhost:3000\n}"));
+        assert!(!out.contains("handle"));
+    }
+
+    #[test]
+    fn path_route_renders_handle_blocks_with_catch_all() {
+        let routes = vec![PathRoute {
+            path: "/admin".into(),
+            target: "localhost:4000".into(),
+            strip_prefix: false,
+        }];
+        let cfg = Config {
+            default_tld: "test".into(),
+            hosts: vec![host("a.test", "localhost:3000", routes)],
+        };
+        let out = generate_caddyfile(&cfg);
+        assert!(out.contains("handle /admin* {"));
+        assert!(out.contains("reverse_proxy localhost:4000"));
+        // Catch-all giu target mac dinh.
+        assert!(out.contains("handle {\n\t\treverse_proxy localhost:3000"));
+    }
+
+    #[test]
+    fn strip_prefix_uses_handle_path() {
+        let routes = vec![PathRoute {
+            path: "admin".into(), // khong co dau "/" o dau -> tu them
+            target: "localhost:4000".into(),
+            strip_prefix: true,
+        }];
+        let cfg = Config {
+            default_tld: "test".into(),
+            hosts: vec![host("a.test", "localhost:3000", routes)],
+        };
+        let out = generate_caddyfile(&cfg);
+        assert!(out.contains("handle_path /admin* {"));
+    }
+
+    #[test]
+    fn empty_path_entries_are_ignored() {
+        let routes = vec![PathRoute {
+            path: "  ".into(),
+            target: "".into(),
+            strip_prefix: false,
+        }];
+        let cfg = Config {
+            default_tld: "test".into(),
+            hosts: vec![host("a.test", "localhost:3000", routes)],
+        };
+        let out = generate_caddyfile(&cfg);
+        assert!(out.contains("a.test {\n\treverse_proxy localhost:3000\n}"));
+        assert!(!out.contains("handle"));
     }
 }
 

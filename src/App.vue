@@ -187,6 +187,11 @@ async function openLink(h: Host) {
         <div class="info">
           <div class="domain">{{ scheme(h) }}://{{ h.domain }}</div>
           <div class="target">→ {{ h.target }}</div>
+          <div v-if="h.paths && h.paths.length" class="paths">
+            <span v-for="p in h.paths" :key="p.path" class="path-chip">
+              {{ p.path }} → {{ p.target }}
+            </span>
+          </div>
         </div>
         <div class="tags">
           <span v-if="h.https" class="tag">HTTPS</span>
@@ -347,6 +352,16 @@ h1 { margin: 0; font-size: 22px; }
 .info { flex: 1; min-width: 0; }
 .domain { font-weight: 600; font-size: 15px; }
 .target { color: var(--muted); font-size: 13px; margin-top: 2px; font-family: ui-monospace, monospace; }
+.paths { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.path-chip {
+  font-size: 11px;
+  font-family: ui-monospace, monospace;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  padding: 2px 8px;
+  border-radius: 6px;
+}
 .tags { display: flex; gap: 6px; }
 .tag { font-size: 11px; background: rgba(76,139,245,0.15); color: #8db4ff; padding: 3px 8px; border-radius: 6px; }
 .card-actions { display: flex; gap: 8px; }

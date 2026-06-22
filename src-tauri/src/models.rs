@@ -8,6 +8,18 @@ fn default_tld() -> String {
     "test".to_string()
 }
 
+/// Mot route theo path trong cung mot domain, vd "/admin" -> "localhost:4000".
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PathRoute {
+    /// Path prefix, vd "/admin".
+    pub path: String,
+    /// Dich reverse proxy cho path nay, vd "localhost:4000".
+    pub target: String,
+    /// Bo tien to path truoc khi proxy (handle_path thay vi handle).
+    #[serde(default, rename = "stripPrefix")]
+    pub strip_prefix: bool,
+}
+
 /// Mot dev host: domain -> target (host:port).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Host {
@@ -16,12 +28,15 @@ pub struct Host {
     pub name: String,
     /// Domain day du, vd "myapp.test".
     pub domain: String,
-    /// Dich reverse proxy, vd "localhost:2222".
+    /// Dich reverse proxy mac dinh (catch-all), vd "localhost:2222".
     pub target: String,
     #[serde(default = "default_true")]
     pub https: bool,
     #[serde(default = "default_true")]
     pub enabled: bool,
+    /// Cac route theo path tro toi target rieng (vd /admin -> port khac).
+    #[serde(default)]
+    pub paths: Vec<PathRoute>,
 }
 
 /// Config dong bo qua git (single source of truth).

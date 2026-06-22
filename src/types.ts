@@ -1,5 +1,11 @@
 // Khop voi struct trong src-tauri/src/models.rs
 
+export interface PathRoute {
+  path: string;
+  target: string;
+  stripPrefix: boolean;
+}
+
 export interface Host {
   id: string;
   name: string;
@@ -7,6 +13,7 @@ export interface Host {
   target: string;
   https: boolean;
   enabled: boolean;
+  paths: PathRoute[];
 }
 
 export interface Config {
@@ -41,5 +48,6 @@ export function emptyHost(): Host {
     target: "localhost:3000",
     https: true,
     enabled: true,
+    paths: [],
   };
 }
