@@ -99,6 +99,12 @@ fn apply_hosts() -> Result<(), String> {
     hosts_file::apply(&cfg)
 }
 
+/// Mo file hosts (/etc/hosts) bang trinh soan thao mac dinh.
+#[tauri::command]
+fn open_hosts_file() -> Result<(), String> {
+    hosts_file::open_in_editor()
+}
+
 // ---------- Caddy control ----------
 
 #[tauri::command]
@@ -253,6 +259,7 @@ pub fn run() {
             preview_caddyfile,
             apply_all,
             apply_hosts,
+            open_hosts_file,
             caddy_status,
             caddy_start,
             caddy_stop,

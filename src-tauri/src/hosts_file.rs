@@ -135,6 +135,41 @@ pub fn apply(cfg: &Config) -> Result<(), String> {
     write_hosts_elevated(&content)
 }
 
+/// Mo file hosts bang trinh soan thao mac dinh cua he thong.
+pub fn open_in_editor() -> Result<(), String> {
+    let path = hosts_path();
+
+    #[cfg(target_os = "macos")]
+    let mut cmd = {
+        // `open -t` mo bang trinh soan thao van ban mac dinh.
+        let mut c = std::process::Command::new("open");
+        c.arg("-t").arg(&path);
+        c
+    };
+
+    #[cfg(target_os = "windows")]
+    let mut cmd = {
+        let mut c = std::process::Command::new("notepad");
+        c.arg(&path);
+        c
+    };
+
+    #[cfg(target_os = "linux")]
+    let mut cmd = {
+        let mut c = std::process::Command::new("xdg-open");
+        c.arg(&path);
+        c
+    };
+
+    let status = cmd
+        .status()
+        .map_err(|e| format!("Khong mo duoc file hosts: {e}"))?;
+    if !status.success() {
+        return Err("Mo file hosts that bai".into());
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

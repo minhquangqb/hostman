@@ -14,6 +14,7 @@ export const previewHosts = () => invoke<string>("preview_hosts");
 export const previewCaddyfile = () => invoke<string>("preview_caddyfile");
 export const applyAll = () => invoke<void>("apply_all");
 export const applyHosts = () => invoke<void>("apply_hosts");
+export const openHostsFile = () => invoke<void>("open_hosts_file");
 
 // Caddy
 export const caddyStatus = () => invoke<CaddyStatus>("caddy_status");

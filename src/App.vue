@@ -84,6 +84,9 @@ async function showCaddyPreview() {
   const content = await run(api.previewCaddyfile);
   if (content !== undefined) preview.value = { title: "Caddyfile (preview)", content };
 }
+async function openHostsFile() {
+  await run(api.openHostsFile);
+}
 
 // ---- Caddy ----
 async function caddyStart() {
@@ -168,6 +171,7 @@ async function openLink(h: Host) {
       <button class="primary" @click="openAdd">+ Thêm host</button>
       <div class="spacer"></div>
       <button class="ghost" :disabled="busy" @click="showHostsPreview">Xem hosts</button>
+      <button class="ghost" :disabled="busy" title="Mở /etc/hosts bằng trình soạn thảo mặc định" @click="openHostsFile">Mở file hosts</button>
       <button class="ghost" :disabled="busy" @click="showCaddyPreview">Xem Caddyfile</button>
       <button class="accent" :disabled="busy" @click="applyAll">Áp dụng ⚡</button>
     </section>
